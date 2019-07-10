@@ -25,8 +25,8 @@ struct Modified<T: View>: View {
         self.inner = inner
     }
     
-    var body: UIView {
-        return inner.body
+    var body: View {
+        return inner
     }
 }
 
@@ -35,7 +35,7 @@ struct Border {
     let color: UIColor
 }
 
-struct Text: View {
+struct Text: UIViewRepresentable {
     var text: String?
     var textColor: UIColor = .black
     var margins: UIEdgeInsets = .zero
@@ -49,7 +49,7 @@ struct Text: View {
         return self
     }
     
-    var body: UIView {
+    func makeUIView() -> UIView {
         let label = UILabel()
         label.text = text
         label.textColor = textColor
@@ -108,21 +108,33 @@ struct Layout {
     }
 }
 
-
-struct VStack: View {
-    let views: [View]
+struct VStack: UIViewRepresentable {
+    let views: [ViewBase]
     var spacing: CGFloat
     var margins: UIEdgeInsets
     
-    var body: UIView {
+    func makeUIView() -> UIView {
         let view = UIView()
         view.backgroundColor = UIColor.blue.withAlphaComponent(0.1)
         layout(in: view)
         return view
     }
     
+    func view(_ view: ViewBase) -> (UIView, UIEdgeInsets) {
+        if let view = view as? UIViewRepresentable {
+            return (view.makeUIView(), view.margins)
+        }
+        if let view = view as? View {
+            //TODO: append parent margins
+            return self.view(view.body)
+        }
+        fatalError("Unknown subtype")
+    }
+    
     func layout(in container: UIView) {
-        let bodies = views.map { $0.body }
+        let vm = views.map { self.view($0) }
+        let bodies = vm.map { $0.0 }
+        let margins = vm.map { $0.1 }
         for body in bodies {
             body.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(body)
@@ -131,21 +143,21 @@ struct VStack: View {
             Layout.stripe(
                 vertical: true,
                 views: bodies,
-                margins: views.map { $0.margins }))
+                margins: margins))
         if let first = bodies.first,
-            let margins = views.first?.margins {
+            let margins = margins.first {
             NSLayoutConstraint.activate(
                 Layout.arrange(view: first, in: container, top: margins.top))
         }
         if let last = bodies.last,
-            let margins = views.last?.margins {
+            let margins = margins.last {
             NSLayoutConstraint.activate(
                 Layout.arrange(view: last, in: container, bottom: margins.bottom))
             last.setContentHuggingPriority(.init(100), for: .vertical)
             last.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         }
         for i in 0..<bodies.count {
-            let margins = views[i].margins
+            let margins = margins[i]
             NSLayoutConstraint.activate(
                 Layout.arrange(view: bodies[i], in: container, leading: margins.left, trailing: margins.right))
         }
@@ -155,18 +167,28 @@ struct VStack: View {
 
 
 class HostView: UIView {
-    var content: View? {
+    var content: ViewBase? {
         didSet {
             guard let content = self.content else { return }
             render(content: content, in: self)
         }
     }
     
-    func render(content: View, in container: UIView) {
-        let bodyView = content.body
+    func view(_ view: ViewBase) -> (UIView, UIEdgeInsets) {
+        if let view = view as? UIViewRepresentable {
+            return (view.makeUIView(), view.margins)
+        }
+        if let view = view as? View {
+            //TODO: append parent margins
+            return self.view(view.body)
+        }
+        fatalError("Unknown subtype")
+    }
+    
+    func render(content: ViewBase, in container: UIView) {
+        let (bodyView, margins) = self.view(content)
         bodyView.translatesAutoresizingMaskIntoConstraints = false
         self.addSubview(bodyView)
-        let margins = content.margins
         NSLayoutConstraint.activate(
             Layout.arrange(view: bodyView, in: self, top: margins.top, bottom: margins.bottom, leading: margins.left, trailing: margins.right)
         )
