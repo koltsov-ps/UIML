@@ -5,12 +5,12 @@ protocol ViewBase { }
 
 protocol View: ViewBase {
     var body: View { get }
-    
-    var margins: UIEdgeInsets { get }
 }
 
-protocol UIViewRepresentable: ViewBase {
+protocol UIViewRepresentable: View {
     func makeUIView() -> UIView
-    
-    var margins: UIEdgeInsets { get }
+}
+
+extension UIViewRepresentable {
+    var body: View { fatalError("Not Implemented") }
 }
